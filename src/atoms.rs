@@ -174,10 +174,10 @@ impl MoovBox {
 pub struct MvhdBox {
     pub version: u8,
     pub flags: u32,
-    pub creation_time: u32,
-    pub modification_time: u32,
+    pub creation_time: u64,
+    pub modification_time: u64,
     pub timescale: u32,
-    pub duration: u32,
+    pub duration: u64,
     pub rate: u32,
 }
 
@@ -198,8 +198,8 @@ impl TrakBox {
 pub struct TkhdBox {
     pub version: u8,
     pub flags: u32,
-    pub creation_time: u32,
-    pub modification_time: u32,
+    pub creation_time: u64,
+    pub modification_time: u64,
     pub track_id: u32,
     pub duration: u64,
     pub layer:  u16,
@@ -243,8 +243,8 @@ pub struct ElstBox {
 
 #[derive(Debug, Default)]
 pub struct ElstEntry {
-    pub segment_duration: u32,
-    pub media_time: u32,
+    pub segment_duration: u64,
+    pub media_time: u64,
     pub media_rate: u16,
     pub media_rate_fraction: u16,
 }
@@ -266,10 +266,10 @@ impl MdiaBox {
 pub struct MdhdBox {
     pub version: u8,
     pub flags: u32,
-    pub creation_time: u32,
-    pub modification_time: u32,
+    pub creation_time: u64,
+    pub modification_time: u64,
     pub timescale: u32,
-    pub duration: u32,
+    pub duration: u64,
     pub language: u16,
     pub language_string: String,
 }
@@ -385,10 +385,28 @@ fn parse_mvhd_box(f: &mut BufReader<File>, _offset: u64, size: u32) -> Result<Mv
     let flags_b = f.read_u8().unwrap();
     let flags_c = f.read_u8().unwrap();
     let flags = u32::from(flags_a) << 16 | u32::from(flags_b) << 8 | u32::from(flags_c);
-    let creation_time = f.read_u32::<BigEndian>().unwrap();
-    let modification_time = f.read_u32::<BigEndian>().unwrap();
+    let creation_time = if version == 1 {
+        f.read_u64::<BigEndian>().unwrap()
+    } else {
+        f.read_u32::<BigEndian>().unwrap() as u64
+    };
+    let modification_time = if version == 1 {
+        f.read_u64::<BigEndian>().unwrap()
+    } else {
+        f.read_u32::<BigEndian>().unwrap() as u64
+    };
     let timescale = f.read_u32::<BigEndian>().unwrap();
-    let duration = f.read_u32::<BigEndian>().unwrap();
+    let duration = if version == 1 {
+        f.read_u64::<BigEndian>().unwrap()
+    } else {
+        let d = f.read_u32::<BigEndian>().unwrap();
+        if d == std::u32::MAX {
+            // preserve the special case all one's (unknown)
+            std::u64::MAX
+        } else {
+            u64::from(d)
+        }
+    };
     let rate = f.read_u32::<BigEndian>().unwrap();
     skip(f, current, size);
 
@@ -443,10 +461,22 @@ fn parse_tkhd_box(f: &mut BufReader<File>, _offset: u64, size: u32) -> Result<Tk
     let flags_b = f.read_u8().unwrap();
     let flags_c = f.read_u8().unwrap();
     let flags = u32::from(flags_a) << 16 | u32::from(flags_b) << 8 | u32::from(flags_c);
-    let creation_time = f.read_u32::<BigEndian>().unwrap();
-    let modification_time = f.read_u32::<BigEndian>().unwrap();
+    let creation_time = if version == 1 {
+        f.read_u64::<BigEndian>().unwrap()
+    } else {
+        f.read_u32::<BigEndian>().unwrap() as u64
+    };
+    let modification_time = if version == 1 {
+        f.read_u64::<BigEndian>().unwrap()
+    } else {
+        f.read_u32::<BigEndian>().unwrap() as u64
+    };
     let track_id = f.read_u32::<BigEndian>().unwrap();
-    let duration = f.read_u64::<BigEndian>().unwrap();
+    let duration = if version == 1 {
+        f.read_u64::<BigEndian>().unwrap()
+    } else {
+        f.read_u32::<BigEndian>().unwrap() as u64
+    };
     f.read_u64::<BigEndian>().unwrap(); // skip.
     let layer = f.read_u16::<BigEndian>().unwrap();
     let alternate_group = f.read_u16::<BigEndian>().unwrap();
@@ -517,9 +547,19 @@ fn parse_elst_box(f: &mut BufReader<File>, _offset: u64, size: u32) -> Result<El
     let mut entries = Vec::new();
 
     for _i in 0..entry_count {
+        let segment_duration = if version == 1 {
+            f.read_u64::<BigEndian>().unwrap()
+        } else {
+            f.read_u32::<BigEndian>().unwrap() as u64
+        };
+        let media_time = if version == 1 {
+            f.read_u64::<BigEndian>().unwrap()
+        } else {
+            f.read_u32::<BigEndian>().unwrap() as u64
+        };
         let entry = ElstEntry{
-            segment_duration: f.read_u32::<BigEndian>().unwrap(),
-            media_time: f.read_u32::<BigEndian>().unwrap(),
+            segment_duration,
+            media_time,
             media_rate: f.read_u16::<BigEndian>().unwrap(),
             media_rate_fraction: f.read_u16::<BigEndian>().unwrap(),
         };
@@ -573,10 +613,28 @@ fn parse_mdhd_box(f: &mut BufReader<File>, _offset: u64, size: u32) -> Result<Md
     let flags_b = f.read_u8().unwrap();
     let flags_c = f.read_u8().unwrap();
     let flags = u32::from(flags_a) << 16 | u32::from(flags_b) << 8 | u32::from(flags_c);
-    let creation_time = f.read_u32::<BigEndian>().unwrap();
-    let modification_time = f.read_u32::<BigEndian>().unwrap();
+    let creation_time = if version == 1 {
+        f.read_u64::<BigEndian>().unwrap()
+    } else {
+        f.read_u32::<BigEndian>().unwrap() as u64
+    };
+    let modification_time = if version == 1 {
+        f.read_u64::<BigEndian>().unwrap()
+    } else {
+        f.read_u32::<BigEndian>().unwrap() as u64
+    };
     let timescale = f.read_u32::<BigEndian>().unwrap();
-    let duration = f.read_u32::<BigEndian>().unwrap();
+    let duration = if version == 1 {
+        f.read_u64::<BigEndian>().unwrap()
+    } else {
+        let d = f.read_u32::<BigEndian>().unwrap();
+        if d == std::u32::MAX {
+            // preserve the special call all one's (unknown)
+            std::u64::MAX
+        } else {
+            u64::from(d)
+        }
+    };
     let language = f.read_u16::<BigEndian>().unwrap();
     let language_string = get_language_string(language);
     skip(f, current, size);
